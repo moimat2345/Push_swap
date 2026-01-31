@@ -1,0 +1,53 @@
+/* ************************************************************************** */
+/*                                                                            */
+/*                                                        :::      ::::::::   */
+/*   main.c                                             :+:      :+:    :+:   */
+/*                                                    +:+ +:+         +:+     */
+/*   By: matnusko <matnusko@student.42.fr>          +#+  +:+       +#+        */
+/*                                                +#+#+#+#+#+   +#+           */
+/*   Created: 2025/10/19 17:38:58 by matnusko          #+#    #+#             */
+/*   Updated: 2025/11/25 19:13:51 by matnusko         ###   ########.fr       */
+/*                                                                            */
+/* ************************************************************************** */
+
+#include "../include/push_swap.h"
+
+static int	init_and_validate(int argc, char **argv, t_stack **arr)
+{
+	*arr = (t_stack *)malloc(sizeof(t_stack));
+	if (!*arr)
+		return (write(2, "Error\n", 6));
+	if (argc == 2)
+		special_init(argv[1], *arr);
+	else
+		initialize_stack(argc - 1, argv, *arr, NULL);
+	if (parse_and_validate(*arr, (*arr)->size_a + 1) != 0)
+	{
+		free_stacks(*arr);
+		return (1);
+	}
+	return (0);
+}
+
+int	main(int argc, char **argv)
+{
+	t_stack	*arr;
+
+	if (argc < 2 || argv[1][0] == '\0')
+		return (write(2, "Error\n", 6));
+	if (argv[1][0] == ' ' && argv[1][1] == '\0')
+		return (write(2, "Error\n", 6));
+	if ((!validate_arguments(argc, argv) && argc > 2)
+		|| validate_format(argv) == 0)
+		return (write(2, "Error\n", 6));
+	if (init_and_validate(argc, argv, &arr) != 0)
+		return (1);
+	if (!is_sorted(arr))
+		convert_to_indices(arr);
+	if (arr->size_a <= 5)
+		sort_small_stack(arr);
+	else
+		radix_sort(arr);
+	free_stacks(arr);
+	return (0);
+}
