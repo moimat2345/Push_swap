@@ -156,46 +156,135 @@ ARG="4 67 3 87 23"; ./push_swap $ARG | ./checker $ARG
 
 ## 💡 Points Clés de l'Implémentation
 
-<details>
-<summary><b>🔹 Tri Radix (pour >5 éléments)</b></summary>
+### Vue d'ensemble de la stratégie de tri
 
-Pour les entrées plus grandes, l'algorithme utilise un **tri radix binaire** basé sur la manipulation de bits :
+Le programme utilise **deux stratégies différentes** selon la taille de l'entrée :
 
-1. Convertir toutes les valeurs en indices triés (0 à n-1)
-2. Pour chaque position de bit (LSB vers MSB) :
-   - Si le bit est `0` → pousser vers la pile B (`pb`)
-   - Si le bit est `1` → rotation de la pile A (`ra`)
-3. Repousser tout de B vers A
-4. Répéter pour le bit suivant
+| Taille | Algorithme | Pourquoi |
+|:------:|:-----------|:---------|
+| 2-5 éléments | Mouvements optimaux codés en dur | Minimum d'opérations, pas de surcharge |
+| >5 éléments | **Double Tri Radix** | Efficace pour les grands ensembles, utilise les deux piles simultanément |
+
+---
+
+<details open>
+<summary><b>🔹 Double Tri Radix (pour >5 éléments)</b></summary>
+
+Contrairement à un tri radix classique qui repousse simplement tout de B vers A après chaque passe de bit, cette implémentation utilise une approche **double radix** : **les deux piles sont activement triées en même temps** sur des positions de bits différentes.
+
+#### Étape 1 — Normalisation par indices
+
+Avant le tri, toutes les valeurs sont converties en indices commençant à 0 pour que le radix fonctionne sur une plage propre :
 
 ```c
-// Logique simplifiée du tri radix
-pour chaque position de bit:
-    pour chaque élément dans A:
-        si (element >> bit) & 1 == 0
-            pb();   // bit est 0 → envoyer vers B
-        sinon
-            ra();   // bit est 1 → garder dans A
-    repousser tout B vers A
+// Entrée :  [42, -5, 100, 0, 7]
+// Indices : [ 3,  0,   4, 1, 2]
 ```
 
-**Complexité** : O(n * k) où k = nombre de bits nécessaires.
+L'algorithme trouve répétitivement la valeur minimum et lui assigne l'indice suivant.
+
+#### Étape 2 — Calcul du nombre de bits
+
+L'algorithme détermine combien de bits sont nécessaires pour représenter le plus grand indice :
+
+```c
+// 5 éléments → indices 0..4 → max = 4 → binaire 100 → 3 bits nécessaires
+int bit_size = get_max_bits(size_a - 1);
+```
+
+#### Étape 3 — Double Radix : Trier A et B simultanément
+
+Pour chaque position de bit (du bit 0 = LSB vers le haut) :
+
+**Phase A** — Partitionner la pile A selon le bit courant :
+```
+Pour chaque élément au sommet de A :
+  ┌─ bit est 0 → pb  (envoyer vers B)
+  └─ bit est 1 → ra  (garder dans A, rotation vers le bas)
+```
+
+**Phase B** — Trier immédiatement la pile B sur le bit **suivant** (bit + 1) :
+```
+Pour chaque élément au sommet de B :
+  ┌─ bit est 0 → rb  (garder dans B, rotation vers le bas)
+  └─ bit est 1 → pa  (repousser vers A)
+```
+
+C'est la différence clé : au lieu de repousser aveuglément tout de B vers A, `radix_sort_b` trie activement B en utilisant le bit suivant, renvoyant les éléments vers A uniquement quand leur bit suivant est `1`.
+
+#### Étape 4 — Optimisation de sortie anticipée
+
+À chaque étape, l'algorithme vérifie `is_sorted()`. Si A est déjà trié et B est vide, il s'arrête immédiatement — évitant des opérations inutiles.
+
+#### Exemple visuel
+
+```
+Indices en entrée : [2, 0, 3, 1]  →  binaire : [10, 00, 11, 01]
+
+═══ Bit 0 (LSB) — Tri de A ═══
+  2 (10) → bit=0 → pb     B: [2]        A: [0, 3, 1]
+  0 (00) → bit=0 → pb     B: [0, 2]     A: [3, 1]
+  3 (11) → bit=1 → ra     B: [0, 2]     A: [1, 3]
+  1 (01) → bit=1 → ra     B: [0, 2]     A: [1, 3]  (déjà rotaté)
+
+═══ Bit 1 — Tri de B (pendant que A garde son ordre) ═══
+  0 (00) → bit=0 → rb     B: [2, 0]     A: [1, 3]
+  2 (10) → bit=1 → pa     B: [0]        A: [2, 1, 3]
+
+═══ Bit 1 — Tri de A ═══
+  ... continue jusqu'à ce que ce soit trié
+
+═══ Final : repousser le reste de B vers A ═══
+```
+
+#### Complexité
+
+**O(n * k)** où k = nombre de bits nécessaires (log2(n)).
+Le double radix réduit le nombre total d'opérations par rapport à un radix simple car B est trié pendant qu'il est vidé, au lieu d'être repoussé aveuglément.
 
 </details>
+
+---
 
 <details>
-<summary><b>🔹 Optimisation Petites Piles (2-5 éléments)</b></summary>
+<summary><b>🔹 Tri des Petites Piles (2-5 éléments)</b></summary>
 
-Pour les petites entrées, des solutions optimales codées en dur sont utilisées :
+Pour les petites entrées, l'algorithme utilise des **solutions optimales codées en dur** qui garantissent le minimum d'opérations :
+
+#### 2 éléments
+```
+Simplement échanger (sa) si pas dans l'ordre.
+```
+
+#### 3 éléments — Arbre de décision
+Les 6 permutations sont gérées avec au maximum 2 opérations :
 
 ```
-2 éléments → 1 opération max (sa)
-3 éléments → 2 opérations max (arbre de décision)
-4 éléments → pousser le min vers B, trier 3, repousser
-5 éléments → pousser le min vers B, trier 4 récursivement
+[2,1,3] → sa
+[3,2,1] → sa + rra
+[3,1,2] → ra
+[1,3,2] → sa + ra
+[2,3,1] → rra
+[1,2,3] → (déjà trié)
 ```
+
+#### 4 éléments
+1. Trouver la position de l'élément minimum
+2. Le faire remonter au sommet de A (`ra` jusqu'à ce que le min soit en haut)
+3. Le pousser vers B (`pb`)
+4. Trier les 3 éléments restants (réutilise `sort_three`)
+5. Le repousser (`pa`)
+
+#### 5 éléments
+Même logique que 4 éléments, mais avec une optimisation intelligente :
+- Si le minimum est dans la **moitié haute** (position 0-2) → utiliser `ra` pour le remonter
+- Si le minimum est dans la **moitié basse** (position 3-4) → utiliser `rra` (plus rapide, moins de mouvements)
+
+Puis pousser vers B, trier les 4 restants (qui appelle le tri de 3 en interne), et repousser.
 
 </details>
+
+---
 
 <details>
 <summary><b>🔹 Normalisation par Indices</b></summary>
@@ -207,9 +296,11 @@ Avant le tri, les valeurs sont converties en indices pour une plage normalisée 
 // Indices : [3,   0,   4, 1, 2]
 ```
 
-Cela simplifie le tri radix car on travaille uniquement avec des valeurs de 0 à n-1.
+L'algorithme trouve répétitivement la valeur minimum, lui assigne l'indice suivant (0, 1, 2...), et la marque comme `INT_MAX` pour qu'elle ne soit plus sélectionnée. Cela garantit que le tri radix fonctionne sur une plage propre de 0 à n-1 quelle que soit les valeurs originales.
 
 </details>
+
+---
 
 <details>
 <summary><b>🔹 Validation des Entrées</b></summary>
@@ -244,7 +335,7 @@ Cette implémentation **n'inclut pas** :
 | **Lignes (projet)** | ~745 |
 | **Lignes (avec libft)** | ~2 838 |
 | **Opérations** | 6 |
-| **Algorithme** | Tri Radix |
+| **Algorithme** | Double Tri Radix |
 | **Bonus** | Non |
 
 </div>

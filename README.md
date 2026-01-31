@@ -156,46 +156,135 @@ ARG="4 67 3 87 23"; ./push_swap $ARG | ./checker $ARG
 
 ## 💡 Implementation Highlights
 
-<details>
-<summary><b>🔹 Radix Sort (for >5 elements)</b></summary>
+### Sorting Strategy Overview
 
-For larger inputs, the algorithm uses a **binary radix sort** based on bit manipulation:
+The program uses **two different strategies** depending on the input size:
 
-1. Convert all values to their sorted indices (0 to n-1)
-2. For each bit position (LSB to MSB):
-   - If the bit is `0` → push to stack B (`pb`)
-   - If the bit is `1` → rotate stack A (`ra`)
-3. Push everything back from B to A
-4. Repeat for the next bit
+| Input size | Algorithm | Why |
+|:----------:|:----------|:----|
+| 2-5 elements | Hardcoded optimal moves | Minimal operations, no overhead |
+| >5 elements | **Double Radix Sort** | Efficient for larger sets, uses both stacks simultaneously |
+
+---
+
+<details open>
+<summary><b>🔹 Double Radix Sort (for >5 elements)</b></summary>
+
+Unlike a classic radix sort that simply pushes everything back from B to A after each bit pass, this implementation uses a **double radix** approach: **both stacks are actively sorted at the same time** on different bit positions.
+
+#### Step 1 — Index Normalization
+
+Before sorting, all values are converted to 0-based indices so the radix sort works on a clean range:
 
 ```c
-// Simplified radix sort logic
-for each bit position:
-    for each element in A:
-        if (element >> bit) & 1 == 0
-            pb();   // bit is 0 → send to B
-        else
-            ra();   // bit is 1 → keep in A
-    push all B back to A
+// Input:   [42, -5, 100, 0, 7]
+// Indices: [ 3,  0,   4, 1, 2]
 ```
 
-**Complexity**: O(n * k) where k = number of bits needed.
+This is done by repeatedly finding the minimum value and assigning it the next index.
+
+#### Step 2 — Calculate the number of bits
+
+The algorithm determines how many bits are needed to represent the largest index:
+
+```c
+// 5 elements → indices 0..4 → max = 4 → binary 100 → 3 bits needed
+int bit_size = get_max_bits(size_a - 1);
+```
+
+#### Step 3 — Double Radix: Sort A and B simultaneously
+
+For each bit position (from bit 0 = LSB upward):
+
+**Phase A** — Partition stack A based on the current bit:
+```
+For each element at the top of A:
+  ┌─ bit is 0 → pb  (push to B)
+  └─ bit is 1 → ra  (keep in A, rotate to bottom)
+```
+
+**Phase B** — Immediately sort stack B on the **next** bit (bit + 1):
+```
+For each element at the top of B:
+  ┌─ bit is 0 → rb  (keep in B, rotate to bottom)
+  └─ bit is 1 → pa  (push back to A)
+```
+
+This is the key difference: instead of blindly pushing everything from B back to A, `radix_sort_b` actively sorts B using the next bit, sending elements back to A only when their next bit is `1`.
+
+#### Step 4 — Early exit optimization
+
+At every step, the algorithm checks `is_sorted()`. If A is already sorted and B is empty, it stops immediately — avoiding unnecessary operations.
+
+#### Visual Example
+
+```
+Input indices: [2, 0, 3, 1]  →  binary: [10, 00, 11, 01]
+
+═══ Bit 0 (LSB) — Sort A ═══
+  2 (10) → bit=0 → pb     B: [2]        A: [0, 3, 1]
+  0 (00) → bit=0 → pb     B: [0, 2]     A: [3, 1]
+  3 (11) → bit=1 → ra     B: [0, 2]     A: [1, 3]
+  1 (01) → bit=1 → ra     B: [0, 2]     A: [1, 3]  (already rotated)
+
+═══ Bit 1 — Sort B (while A keeps its order) ═══
+  0 (00) → bit=0 → rb     B: [2, 0]     A: [1, 3]
+  2 (10) → bit=1 → pa     B: [0]        A: [2, 1, 3]
+
+═══ Bit 1 — Sort A ═══
+  ... continues until sorted
+
+═══ Final: push remaining B to A ═══
+```
+
+#### Complexity
+
+**O(n * k)** where k = number of bits needed (log2(n)).
+The double radix reduces the total number of operations compared to a standard single-pass radix because B is sorted while being emptied, rather than being dumped back blindly.
 
 </details>
+
+---
 
 <details>
-<summary><b>🔹 Small Stack Optimization (2-5 elements)</b></summary>
+<summary><b>🔹 Small Stack Sorting (2-5 elements)</b></summary>
 
-For small inputs, hardcoded optimal solutions are used:
+For small inputs, the algorithm uses **hardcoded optimal solutions** that guarantee the minimum number of operations:
+
+#### 2 elements
+```
+Simply swap (sa) if not in order.
+```
+
+#### 3 elements — Decision tree
+All 6 permutations are handled with at most 2 operations:
 
 ```
-2 elements → 1 operation max (sa)
-3 elements → 2 operations max (decision tree)
-4 elements → push min to B, sort 3, push back
-5 elements → push min to B, sort 4 recursively
+[2,1,3] → sa
+[3,2,1] → sa + rra
+[3,1,2] → ra
+[1,3,2] → sa + ra
+[2,3,1] → rra
+[1,2,3] → (already sorted)
 ```
+
+#### 4 elements
+1. Find the minimum element's position
+2. Rotate it to the top of A (`ra` until min is on top)
+3. Push it to B (`pb`)
+4. Sort the remaining 3 elements (reuses `sort_three`)
+5. Push it back (`pa`)
+
+#### 5 elements
+Same logic as 4 elements, but with a smart optimization:
+- If the minimum is in the **top half** (position 0-2) → use `ra` to bring it up
+- If the minimum is in the **bottom half** (position 3-4) → use `rra` (faster, fewer moves)
+
+Then push to B, sort the remaining 4 (which calls sort 3 inside), and push back.
 
 </details>
+
+---
 
 <details>
 <summary><b>🔹 Index Normalization</b></summary>
@@ -207,9 +296,11 @@ Before sorting, values are converted to indices for a normalized range:
 // Indices: [3,  0,   4, 1, 2]
 ```
 
-This simplifies the radix sort since we only work with values 0 to n-1.
+The algorithm repeatedly finds the minimum value, assigns it the next index (0, 1, 2...), and marks it as `INT_MAX` so it won't be picked again. This ensures the radix sort works on a clean 0 to n-1 range regardless of the original values.
 
 </details>
+
+---
 
 <details>
 <summary><b>🔹 Input Validation</b></summary>
@@ -244,7 +335,7 @@ This implementation **does not include**:
 | **Lines (project)** | ~745 |
 | **Lines (with libft)** | ~2,838 |
 | **Operations** | 6 |
-| **Algorithm** | Radix Sort |
+| **Algorithm** | Double Radix Sort |
 | **Bonus** | No |
 
 </div>
